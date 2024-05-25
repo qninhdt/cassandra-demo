@@ -1,0 +1,15 @@
+# mysql
+peewee
+mysql-connector-python
+
+# mongodb
+mongoengine
+
+# cassandra
+cassandra-driver
+
+# generate fake data
+Faker
+
+# visualization
+streamlit

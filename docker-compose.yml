@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+
+  mongodb:
+    container_name: mongodb
+    image: mongo:latest
+    restart: always
+    volumes:
+      - ./data/mongodb:/data/db
+
+  mysql:
+    container_name: mysql
+    image: mysql:latest
+    restart: always
+    command: --init_file /data/mysql/init.sql
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+      - ./db/mysql/init.sql:/data/mysql/init.sql
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: nah_id_win
+
+  cassandra:
+    container_name: cassandra
+    image: cassandra:latest
+    restart: always
+    volumes:
+      - ./data/cassandra:/var/lib/cassandra
+    environment:
+      CASSANDRA_CLUSTER_NAME: "cassandra-cluster-0"
+      
+  app:
+    build: .
+    container_name: cassandra-demo
+    ports:
+      - 5000:5000
+    depends_on:
+      - mongodb
+      - mysql
+      - cassandra
+    environment:
+      MYSQL_ROOT_PASSWORD: nah_id_win
+      CQLENG_ALLOW_SCHEMA_MANAGEMENT: 0
