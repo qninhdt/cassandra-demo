@@ -1,126 +1,220 @@
 import os
-from datetime import datetime
-from peewee import *
-from playhouse.mysql_ext import MySQLConnectorDatabase
+import mysql.connector
 from db.base_service import BaseService
-from playhouse.shortcuts import model_to_dict
-
-db = MySQLConnectorDatabase(
-    database="cassandra_demo",
-    user="root",
-    password=os.getenv("MYSQL_ROOT_PASSWORD"),
-    host="mysql",
-    port=3306,
-    autoconnect=False,
-)
-
-
-class BaseModel(Model):
-    class Meta:
-        database = db
-
-
-class User(BaseModel):
-    username = CharField(max_length=255)
-    email = CharField(max_length=255)
-    password = CharField(max_length=255)
-
-    class Meta:
-        table_name = "users"
-
-
-class Post(BaseModel):
-    user = ForeignKeyField(User, backref="posts")
-    title = CharField(max_length=255)
-    content = TextField()
-
-    class Meta:
-        table_name = "posts"
-
-
-class Comment(BaseModel):
-    user = ForeignKeyField(User, backref="comments")
-    post = ForeignKeyField(Post, backref="comments")
-    content = TextField()
-
-    class Meta:
-        table_name = "comments"
 
 
 class MySQLService(BaseService):
 
     def connect(self):
-        try:
-            db.connect()
-            db.create_tables([User, Post, Comment])
+        self.db = mysql.connector.connect(
+            database="cassandra_demo",
+            user="root",
+            password=os.getenv("MYSQL_ROOT_PASSWORD"),
+            host="mysql",
+            port=3306,
+        )
 
-            print("Connected to MySQL database")
-        except Exception as e:
-            print("Cannot connect to MySQL database", e)
+        self.cursor = self.db.cursor()
+
+        self.reset()
+
+        print("Connected to MySQL database")
 
     def disconnect(self):
-        db.close()
+        self.db.close()
         print("Disconnected from MySQL database")
 
-    def get_all_users(self):
-        for user in User.select():
-            yield [
-                {
-                    "id": user.id,
-                    "username": user.username,
-                    "email": user.email,
-                }
-            ]
+    def get_post_by_user_id(self, user_id):
+        # join author information
+        query = """
+            SELECT posts.id, posts.title, posts.content, users.id, users.username, users.email
+            FROM posts
+            JOIN users ON posts.user_id = users.id
+            WHERE users.id = %s
+        """
 
-    def get_all_posts(self):
-        for post in Post.select():
-            yield [
-                {
-                    "id": post.id,
-                    "title": post.title,
-                    "content": post.content,
+        self.cursor.execute(query, (user_id,))
+        posts_ = self.cursor.fetchall()
+
+        posts = []
+
+        for post_ in posts_:
+            post = {
+                "id": post_[0],
+                "title": post_[1],
+                "content": post_[2],
+                "user": {
+                    "id": post_[3],
+                    "username": post_[4],
+                    "email": post_[5],
+                },
+                "comments": [],
+            }
+
+            # get comments
+            query = """
+                SELECT comments.id, comments.content, users.id, users.username, users.email
+                FROM comments
+                JOIN users ON comments.user_id = users.id
+                WHERE comments.post_id = %s
+            """
+
+            self.cursor.execute(query, (post["id"],))
+            comments_ = self.cursor.fetchall()
+
+            for comment_ in comments_:
+                comment = {
+                    "id": comment_[0],
+                    "content": comment_[1],
                     "user": {
-                        "id": post.user.id,
-                        "username": post.user.username,
-                        "email": post.user.email,
+                        "id": comment_[2],
+                        "username": comment_[3],
+                        "email": comment_[4],
                     },
-                    "comments": [
-                        {
-                            "id": comment.id,
-                            "user": {
-                                "id": comment.user.id,
-                                "username": comment.user.username,
-                                "email": comment.user.email,
-                            },
-                            "content": comment.content,
-                        }
-                        for comment in post.comments
-                    ],
                 }
-            ]
+
+                post["comments"].append(comment)
+
+            posts.append(post)
+
+        return posts
+
+    def get_comments_by_user_id(self, user_id):
+        query = """
+            SELECT comments.id, comments.content, posts.id, posts.title, posts.content
+            FROM comments
+            JOIN posts ON comments.post_id = posts.id
+            WHERE comments.user_id = %s
+        """
+
+        self.cursor.execute(query, (user_id,))
+        comments_ = self.cursor.fetchall()
+
+        comments = []
+
+        for comment_ in comments_:
+            comment = {
+                "id": comment_[0],
+                "content": comment_[1],
+                "post": {
+                    "id": comment_[2],
+                    "title": comment_[3],
+                    "content": comment_[4],
+                },
+            }
+
+            comments.append(comment)
+
+        return comments
+
+    def get_comments_by_post_id(self, post_id):
+        query = """
+            SELECT comments.id, comments.content, users.id, users.username, users.email
+            FROM comments
+            JOIN users ON comments.user_id = users.id
+            WHERE comments.post_id = %s
+        """
+
+        self.cursor.execute(query, (post_id,))
+        comments_ = self.cursor.fetchall()
+
+        comments = []
+
+        for comment_ in comments_:
+            comment = {
+                "id": comment_[0],
+                "content": comment_[1],
+                "user": {
+                    "id": comment_[2],
+                    "username": comment_[3],
+                    "email": comment_[4],
+                },
+            }
+
+            comments.append(comment)
+
+        return comments
 
     def get_all_user_ids(self):
-        return [r[0] for r in db.execute_sql("SELECT id FROM users")]
+        self.cursor.execute("SELECT id FROM users")
+        rs = [r[0] for r in self.cursor.fetchall()]
+        return rs
 
     def get_all_post_ids(self):
-        return [r[0] for r in db.execute_sql("SELECT id FROM posts")]
+        self.cursor.execute("SELECT id FROM posts")
+        rs = [r[0] for r in self.cursor.fetchall()]
+        return rs
 
     def create_user(self, name, email, password):
-        User.create(username=name, email=email, password=password)
+        query = """
+            INSERT INTO users (username, email, password)
+            VALUES (%s, %s, %s)
+        """
+
+        self.cursor.execute(query, (name, email, password))
+        self.db.commit()
 
     def create_post(self, user, title, content):
-        Post.create(user=user, title=title, content=content)
+        query = """
+            INSERT INTO posts (user_id, title, content)
+            VALUES (%s, %s, %s)
+        """
+
+        self.cursor.execute(query, (user, title, content))
+        self.db.commit()
 
     def create_comment(self, user, post, content):
-        Comment.create(user=user, post=post, content=content)
+        query = """
+            INSERT INTO comments (user_id, post_id, content)
+            VALUES (%s, %s, %s)
+        """
+
+        self.cursor.execute(query, (user, post, content))
+        self.db.commit()
 
     def reset(self):
-        Comment.delete().execute()
-        Post.delete().execute()
-        User.delete().execute()
+        for table in ["comments", "posts", "users"]:
+            query = f"DELETE FROM {table}"
 
-        db.execute_sql("ALTER TABLE users AUTO_INCREMENT = 1")
-        db.execute_sql("ALTER TABLE posts AUTO_INCREMENT = 1")
-        db.execute_sql("ALTER TABLE comments AUTO_INCREMENT = 1")
+            self.cursor.execute(query)
+            self.db.commit()
 
-        print("Reset MySQL database")
+        # create table
+        user_query = """
+            CREATE TABLE IF NOT EXISTS users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(255) NOT NULL,
+                email VARCHAR(255) NOT NULL,
+                password VARCHAR(255) NOT NULL
+            );
+        """
+
+        post_query = """
+            CREATE TABLE IF NOT EXISTS posts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT,
+                title VARCHAR(255) NOT NULL,
+                content TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            );
+        """
+
+        comment_query = """
+            CREATE TABLE IF NOT EXISTS comments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT,
+                post_id INT,
+                content TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (post_id) REFERENCES posts(id)
+            );
+        """
+
+        self.cursor.execute(user_query)
+        self.db.commit()
+
+        self.cursor.execute(post_query)
+        self.db.commit()
+
+        self.cursor.execute(comment_query)
+        self.db.commit()

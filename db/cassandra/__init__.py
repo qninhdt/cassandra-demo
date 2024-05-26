@@ -1,1 +1,1 @@
-from .cassandra_service import *
+from .cassandra_service import CassandraService

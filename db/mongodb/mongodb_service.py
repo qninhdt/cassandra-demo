@@ -1,106 +1,92 @@
 from db.base_service import BaseService
-from mongoengine import *
 from datetime import datetime
-
-
-class User(Document):
-    username = StringField(required=True, max_length=255)
-    email = EmailField(required=True, max_length=255)
-    password = StringField(required=True, max_length=255)
-    created_at = DateTimeField(default=datetime.now)
-    updated_at = DateTimeField(default=datetime.now)
-
-    meta = {"collection": "users"}
-
-
-class Post(Document):
-    user = ReferenceField(User, reverse_delete_rule=CASCADE)
-    title = StringField(required=True, max_length=255)
-    content = StringField(required=True)
-    created_at = DateTimeField(default=datetime.now)
-    updated_at = DateTimeField(default=datetime.now)
-
-    meta = {"collection": "posts"}
-
-
-class Comment(Document):
-    user = ReferenceField(User, reverse_delete_rule=CASCADE)
-    post = ReferenceField(Post, reverse_delete_rule=CASCADE)
-    content = StringField(required=True)
-    created_at = DateTimeField(default=datetime.now)
-    updated_at = DateTimeField(default=datetime.now)
-
-    meta = {"collection": "comments"}
+import pymongo
 
 
 class MongoDBService(BaseService):
 
     def connect(self):
-        try:
-            connect("cassandra_demo", host="mongodb", port=27017)
-            print("Connected to MongoDB database")
-        except Exception as e:
-            print("Cannot connect to MongoDB database", e)
+        self.client = pymongo.MongoClient("mongodb://mongodb:27017")
+        self.db = self.client["cassandra_demo"]
+
+        self.users = self.db["users"]
+        self.posts = self.db["posts"]
+        self.comments = self.db["comments"]
+
+        self.reset()
+
+        print("Connected to MongoDB database")
 
     def disconnect(self):
-        disconnect()
         print("Disconnected from MongoDB database")
+        self.db.close()
 
-    def get_all_users(self):
-        for user in User.objects.all():
-            yield [
-                {
-                    "id": str(user.id),
-                    "username": user.username,
-                    "email": user.email,
-                }
-            ]
+    def get_post_by_user_id(self, user_id):
+        # Find user details
+        user = self.users.find_one({"_id": user_id})
 
-    def get_all_posts(self):
-        for post in Post.objects.all():
-            yield [
-                {
-                    "id": str(post.id),
-                    "title": post.title,
-                    "content": post.content,
-                    "user": {
-                        "id": str(post.user.id),
-                        "username": post.user.username,
-                        "email": post.user.email,
-                    },
-                    "comments": [
-                        {
-                            "id": str(comment.id),
-                            "content": comment.content,
-                            "user": {
-                                "id": str(comment.user.id),
-                                "username": comment.user.username,
-                                "email": comment.user.email,
-                            },
-                        }
-                        for comment in Comment.objects(post=post)
-                    ],
-                }
-            ]
+        # Find posts and their comments with user details
+        posts = list(self.posts.find({"user": user_id}))
+
+        for post in posts:
+            post["user"] = user
+            post["comments"] = self.get_comments_by_post_id(post["_id"])
+
+        return posts
+
+    def get_comments_by_user_id(self, user_id):
+        comments = self.comments.find({"user": user_id})
+
+        return list(comments)
+
+    def get_comments_by_post_id(self, post_id):
+        comments = list(self.comments.find({"post": post_id}))
+
+        # Fetch user details for each comment
+        for comment in comments:
+            comment["user"] = self.users.find_one({"_id": comment["user"]})
+
+        return comments
 
     def get_all_user_ids(self):
-        return [str(user.id) for user in User.objects.all()]
+        return [user["_id"] for user in self.users.find()]
 
     def get_all_post_ids(self):
-        return [str(post.id) for post in Post.objects.all()]
+        return [post["_id"] for post in self.posts.find()]
 
     def create_user(self, name, email, password):
-        User(username=name, email=email, password=password).save()
+        user = {
+            "name": name,
+            "email": email,
+            "password": password,
+        }
+
+        self.users.insert_one(user)
 
     def create_post(self, user, title, content):
-        Post(user=user, title=title, content=content).save()
+        post = {
+            "user": user,
+            "title": title,
+            "content": content,
+        }
+
+        self.posts.insert_one(post)
 
     def create_comment(self, user, post, content):
-        Comment(user=user, post=post, content=content).save()
+        comment = {
+            "user": user,
+            "post": post,
+            "content": content,
+        }
+
+        self.comments.insert_one(comment)
 
     def reset(self):
-        Comment.objects.delete()
-        Post.objects.delete()
-        User.objects.delete()
+        self.users.drop()
+        self.posts.drop()
+        self.comments.drop()
 
-        print("Reset MongoDB database")
+        # create index
+        self.posts.create_index("user")
+        self.comments.create_index("user")
+        self.comments.create_index("post")

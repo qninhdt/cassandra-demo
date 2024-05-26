@@ -30,6 +30,8 @@ services:
       - ./data/cassandra:/var/lib/cassandra
     environment:
       CASSANDRA_CLUSTER_NAME: "cassandra-cluster-0"
+    ports:
+      - 9042:9042
       
   app:
     build: .
@@ -42,4 +44,3 @@ services:
       - cassandra
     environment:
       MYSQL_ROOT_PASSWORD: nah_id_win
-      CQLENG_ALLOW_SCHEMA_MANAGEMENT: 0
