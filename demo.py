@@ -33,33 +33,33 @@ services = get_service()
 
 # for service in services:
 #     try:
-#         for _ in service["service"].create_random_user(1):
-#             pass 
-#         for _ in service["service"].create_random_post(1):
-#             pass
-#         for _ in service["service"].create_random_comment(1):
+#         for _ in service["service"].create_reports(100):
 #             pass
 
-#         for x in service["service"].get_posts_by_users():
+#         for x in service["service"].get_reports_by_sensors(2):
 #             st.write(service["name"])
 #             st.json(x, expanded=False)
 #     except Exception as e:
 #         st.write(e)
 
-#     service["service"].reset()
-
-# create random users
-st.header("Create random users")
+# create random reports
+st.header("Create random reports")
 
 # number of users to create
-n = st.number_input("Number of users", 1, 10000, 1000)
+n = st.number_input("Number of reports", 1, 100000, 10000)
 
 if st.button("Create users"):
     for service in services:
         text = f"{service["name"]}"
+        bar = st.progress(0, text=text)
+        it = service["service"].create_reports(n)
 
         last = timer()
-        service["service"].create_random_user(n)
+        i = 0
+        for _ in it:
+            i += 1
+            bar.progress(i / n)
+
         delta = timer() - last
 
         service["creating_users_time"] = delta
@@ -71,58 +71,13 @@ if st.button("Create users"):
         data=[{"DBMS": service["name"], "Time": service["creating_users_time"], "color": service["color"]} for service in services]
     )
 
-# create random posts
-st.header("Create random posts")
+st.header("Get reports by sensors")
 
-# number of posts to create
-n = st.number_input("Number of posts", 1, 10000, 1000)
+n = st.number_input("Number of times to get reports", 1, 1000, 100, key="get_reports_by_sensors")
 
-if st.button("Create posts"):
+if st.button("Get reports by sensors"):
     for service in services:
-        text = f"{service["name"]}"
-        
-        last = timer()
-        service["service"].create_random_post(n)
-        delta = timer() - last
-
-        service["creating_posts_time"] = delta
-    
-    st.write(f"Time to create {n} posts (lower is better)")
-    st.bar_chart(
-        x="DBMS", y="Time",
-        color="color",
-        data=[{"DBMS": service["name"], "Time": service["creating_posts_time"], "color": service["color"]} for service in services]
-    )
-        
-# create random comments
-st.header("Create random comments")
-
-# number of comments to create
-n = st.number_input("Number of comments", 1, 10000, 1000)
-
-if st.button("Create comments"):
-    for service in services:
-        text = f"{service["name"]}"
-        
-        last = timer()
-        service["service"].create_random_comment(n)
-        delta = timer() - last
-
-        service["creating_comments_time"] = delta
-    
-    st.write(f"Time to create {n} comments (lower is better)")
-    st.bar_chart(
-        x="DBMS", y="Time",
-        color="color",
-        data=[{"DBMS": service["name"], "Time": service["creating_comments_time"], "color": service["color"]} for service in services]
-    )
-
-# get posts by users
-st.header("Get posts by users")
-
-if st.button("Get posts by users"):
-    for service in services:
-        it = service["service"].get_posts_by_users()
+        it = service["service"].get_reports_by_sensors(n)
 
         last = timer()
         i = 0
@@ -130,21 +85,24 @@ if st.button("Get posts by users"):
             pass
         delta = timer() - last
 
-        service["getting_posts_time"] = delta
+        service["getting_reports_time"] = delta
 
-    st.write(f"Time to get all posts (lower is better)")
+    st.write(f"Time to get all reports (lower is better)")
     st.bar_chart(
         x="DBMS", y="Time",
         color="color",
-        data=[{"DBMS": service["name"], "Time": service["getting_posts_time"], "color": service["color"]} for service in services]
+        data=[{"DBMS": service["name"], "Time": service["getting_reports_time"], "color": service["color"]} for service in services]
     )
 
-# get comments by users
-st.header("Get comments by users")
 
-if st.button("Get comments by users"):
+st.header("Get reports by locations")
+
+n = st.number_input("Number of times to get reports", 1, 1000, 100, key="get_reports_by_locations")
+
+if st.button("Get reports by locations"):
+
     for service in services:
-        it = service["service"].get_comments_by_users()
+        it = service["service"].get_reports_by_locations(n)
 
         last = timer()
         i = 0
@@ -152,21 +110,23 @@ if st.button("Get comments by users"):
             pass
         delta = timer() - last
 
-        service["getting_comments_time"] = delta
-    
-    st.write(f"Time to get all comments (lower is better)")
+        service["getting_reports_time"] = delta
+
+    st.write(f"Time to get all reports (lower is better)")
     st.bar_chart(
         x="DBMS", y="Time",
         color="color",
-        data=[{"DBMS": service["name"], "Time": service["getting_comments_time"], "color": service["color"]} for service in services]
+        data=[{"DBMS": service["name"], "Time": service["getting_reports_time"], "color": service["color"]} for service in services]
     )
 
-# get comments by posts
-st.header("Get comments by posts")
+st.header("Get reports by environments")
 
-if st.button("Get comments by posts"):
+n = st.number_input("Number of times to get reports", 1, 1000, 100, key="get_reports_by_environments")
+
+if st.button("Get reports by environments"):
+
     for service in services:
-        it = service["service"].get_comments_by_posts()
+        it = service["service"].get_reports_by_environments(n)
 
         last = timer()
         i = 0
@@ -174,13 +134,13 @@ if st.button("Get comments by posts"):
             pass
         delta = timer() - last
 
-        service["getting_comments_time"] = delta
-    
-    st.write(f"Time to get all comments (lower is better)")
+        service["getting_reports_time"] = delta
+
+    st.write(f"Time to get all reports (lower is better)")
     st.bar_chart(
         x="DBMS", y="Time",
         color="color",
-        data=[{"DBMS": service["name"], "Time": service["getting_comments_time"], "color": service["color"]} for service in services]
+        data=[{"DBMS": service["name"], "Time": service["getting_reports_time"], "color": service["color"]} for service in services]
     )
 
 # reset databases

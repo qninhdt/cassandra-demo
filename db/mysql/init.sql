@@ -1,1 +1,0 @@
-CREATE DATABASE IF NOT EXISTS cassandra_demo;

@@ -1,6 +1,7 @@
 from db.base_service import BaseService
 from datetime import datetime
 import pymongo
+from datetime import timedelta
 
 
 class MongoDBService(BaseService):
@@ -9,10 +10,7 @@ class MongoDBService(BaseService):
         self.client = pymongo.MongoClient("mongodb://mongodb:27017")
         self.db = self.client["cassandra_demo"]
 
-        self.users = self.db["users"]
-        self.posts = self.db["posts"]
-        self.comments = self.db["comments"]
-
+        self.report = self.db["report"]
         self.reset()
 
         print("Connected to MongoDB database")
@@ -21,72 +19,50 @@ class MongoDBService(BaseService):
         print("Disconnected from MongoDB database")
         self.db.close()
 
-    def get_post_by_user_id(self, user_id):
-        # Find user details
-        user = self.users.find_one({"_id": user_id})
+    def create_report(self, report):
+        report["date"] = report["time"].strftime("%Y-%m-%d")
+        self.report.insert_one(report)
 
-        # Find posts and their comments with user details
-        posts = list(self.posts.find({"user": user_id}))
+    def get_reports_by_sensor(self, sensor, day):
+        reports = self.report.find(
+            {
+                "sensor": sensor,
+                "date": day.strftime("%Y-%m-%d"),
+            }
+        )
 
-        for post in posts:
-            post["user"] = user
-            post["comments"] = self.get_comments_by_post_id(post["_id"])
+        return list(reports)
 
-        return posts
+    def get_reports_by_location(self, location, day):
+        reports = self.report.find(
+            {
+                "location": location,
+                "date": day.strftime("%Y-%m-%d"),
+            }
+        )
 
-    def get_comments_by_user_id(self, user_id):
-        comments = self.comments.find({"user": user_id})
+        return list(reports)
 
-        return list(comments)
+    def get_reports_by_environment(self, environment, day):
+        reports = self.report.find(
+            {
+                "environment": environment,
+                "date": day.strftime("%Y-%m-%d"),
+            }
+        )
+        return list(reports)
 
-    def get_comments_by_post_id(self, post_id):
-        comments = list(self.comments.find({"post": post_id}))
+    def get_time_range(self):
+        first = self.report.find_one(sort=[("time", pymongo.ASCENDING)])
+        last = self.report.find_one(sort=[("time", pymongo.DESCENDING)])
 
-        # Fetch user details for each comment
-        for comment in comments:
-            comment["user"] = self.users.find_one({"_id": comment["user"]})
-
-        return comments
-
-    def get_all_user_ids(self):
-        return [user["_id"] for user in self.users.find()]
-
-    def get_all_post_ids(self):
-        return [post["_id"] for post in self.posts.find()]
-
-    def create_user(self, name, email, password):
-        user = {
-            "name": name,
-            "email": email,
-            "password": password,
-        }
-
-        self.users.insert_one(user)
-
-    def create_post(self, user, title, content):
-        post = {
-            "user": user,
-            "title": title,
-            "content": content,
-        }
-
-        self.posts.insert_one(post)
-
-    def create_comment(self, user, post, content):
-        comment = {
-            "user": user,
-            "post": post,
-            "content": content,
-        }
-
-        self.comments.insert_one(comment)
+        return first["time"], last["time"]
 
     def reset(self):
-        self.users.drop()
-        self.posts.drop()
-        self.comments.drop()
+        self.report.drop()
 
-        # create index
-        self.posts.create_index("user")
-        self.comments.create_index("user")
-        self.comments.create_index("post")
+        self.report = self.db["report"]
+        self.report.create_index("location")
+        self.report.create_index("sensor")
+        self.report.create_index("environment")
+        self.report.create_index("date")

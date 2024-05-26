@@ -2,6 +2,8 @@ from cassandra.cluster import Cluster
 from cassandra.query import PreparedStatement
 from db.base_service import BaseService
 from uuid import uuid1
+import datetime
+import cassandra
 
 
 class CassandraService(BaseService):
@@ -13,33 +15,38 @@ class CassandraService(BaseService):
 
         self.reset()
 
-        self.GET_USER_BY_ID_QUERY = self.session.prepare(
+        self.CREATE_REPORT = self.session.prepare(
             """
-                SELECT id, username, email
-                FROM user_by_id
-                WHERE id = ?;
+            BEGIN BATCH
+                INSERT INTO report_by_sensor (sensor, date, time, temperature, humidity, air_quality, pressure, wind_speed, wind_direction, gust_speed, dew_point, cloud_cover, visibility, precipitation_intensity, precipitation_type, uv_index, solar_radiation, soil_temperature, soil_moisture)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+              
+            APPLY BATCH;
             """
         )
 
-        self.GET_POST_BY_USER_ID_QUERY = self.session.prepare(
+        self.GET_REPORTS_BY_SENSOR = self.session.prepare(
             """
-                SELECT id, title, content
-                FROM post_by_user_id
-                WHERE user_id = ?;
-            """
-        )
-
-        self.CREATE_USER_QUERY = self.session.prepare(
-            """
-                INSERT INTO user_by_id (id, username, email, password)
-                VALUES (?, ?, ?, ?);
+            SELECT *
+            FROM report_by_sensor
+            WHERE sensor = ? AND date = ?;
             """
         )
 
-        self.CREATE_POST_QUERY = self.session.prepare(
+        self.GET_REPORTS_BY_LOCATION = self.session.prepare(
             """
-                INSERT INTO post_by_user_id (user_id, id, title, content)
-                VALUES (?, ?, ?, ?);
+            SELECT *
+            FROM report_by_location
+            WHERE location = ? AND date = ?;
+            """
+        )
+
+        self.GET_REPORTS_BY_ENVIRONMENT = self.session.prepare(
+            """
+            SELECT *
+            FROM report_by_environment
+            WHERE environment = ? AND date = ?;
             """
         )
 
@@ -49,219 +56,160 @@ class CassandraService(BaseService):
         print("Disconnected from Cassandra database")
         self.cluster.shutdown()
 
-    def get_post_by_user_id(self, user_id):
-        # Fetch user data once
+    def get_time_range(self):
+        start, end = self.session.execute(
+            "SELECT MIN(time), MAX(time) FROM report_by_sensor;"
+        ).one()
 
-        user = self.session.execute(self.GET_USER_BY_ID_QUERY, (user_id,)).one()
+        return start, end
 
-        # Fetch all posts for the user in one query
-        posts = self.session.execute(
-            self.GET_POST_BY_USER_ID_QUERY,
-            (user_id,),
-        ).all()
+    def get_reports_by_sensor(self, sensor, day):
+        day = day.strftime("%Y-%m-%d")
 
-        return [
-            {
-                "id": post.id,
-                "title": post.title,
-                "content": post.content,
-                "user": {
-                    "id": user.id,
-                    "username": user.username,
-                    "email": user.email,
-                },
-                "comments": self.get_comments_by_post_id(post.id),
-            }
-            for post in posts
-        ]
-
-    def get_comments_by_user_id(self, user_id):
-        comments = self.session.execute(
-            "SELECT id, post_id, content FROM comment_by_user_id WHERE user_id = %s;",
-            (user_id,),
-        ).all()
-
-        return [
-            {
-                "id": comment.id,
-                "post_id": comment.post_id,
-                "content": comment.content,
-            }
-            for comment in comments
-        ]
-
-    def get_comments_by_post_id(self, post_id):
-        comments = self.session.execute(
-            "SELECT id, user_id, content FROM comment_by_post_id WHERE post_id = %s;",
-            (post_id,),
-        ).all()
-
-        return [
-            {
-                "id": comment.id,
-                "user": self.session.execute(
-                    "SELECT id, username, email FROM user_by_id WHERE id = %s;",
-                    (comment.user_id,),
-                )
-                .one()
-                ._asdict(),
-                "content": comment.content,
-            }
-            for comment in comments
-        ]
-
-    def get_all_user_ids(self):
-        query = "SELECT id FROM user_by_id;"
-        rows = self.session.execute(query)
-
-        return [row.id for row in rows]
-
-    def get_all_post_ids(self):
-        query = "SELECT id FROM post_by_user_id;"
-        rows = self.session.execute(query)
-
-        return [row.id for row in rows]
-
-    def create_user(self, name, email, password):
-        self.session.execute(self.CREATE_USER_QUERY, (uuid1(), name, email, password))
-
-    def create_post(self, user, title, content):
-        post_id = uuid1()
-        self.session.execute(self.CREATE_POST_QUERY, (user, post_id, title, content))
-
-    def create_random_user(self, n):
-        from faker import Faker
-
-        fake = Faker()
-
-        def chunks(lst, n):
-            for i in range(0, len(lst), n):
-                yield lst[i : i + n]
-
-        for chunk in chunks(range(n), 200):
-            data = [
-                [uuid1(), fake.name(), fake.email(), fake.password()] for _ in chunk
-            ]
-
-            # flatten data
-            data = [item for sublist in data for item in sublist]
-
-            query = """
-                BEGIN BATCH
-                    {}
-                APPLY BATCH;
-            """.format(
-                "".join(
-                    [
-                        "INSERT INTO user_by_id (id, username, email, password) VALUES (%s, %s, %s, %s);\n"
-                        for _ in chunk
-                    ]
-                )
-            )
-
-            self.session.execute(query, data)
-
-    def create_comment(self, user, post, content):
-        query = """
-            BEGIN BATCH
-                INSERT INTO comment_by_user_id (user_id, id, post_id, content)
-                VALUES (%s, %s, %s, %s);
-
-                INSERT INTO comment_by_post_id (post_id, id, user_id, content)
-                VALUES (%s, %s, %s, %s);
-            APPLY BATCH;
-        """
-
-        comment_id = uuid1()
         self.session.execute(
-            query,
+            self.GET_REPORTS_BY_SENSOR,
+            (sensor, day),
+        )
+
+    def get_reports_by_location(self, location, day):
+        day = day.strftime("%Y-%m-%d")
+
+        return self.session.execute(
+            self.GET_REPORTS_BY_LOCATION,
+            (location, day),
+        ).all()
+
+    def get_reports_by_environment(self, environment, day):
+        day = day.strftime("%Y-%m-%d")
+
+        return self.session.execute(
+            self.GET_REPORTS_BY_ENVIRONMENT,
+            (environment, day),
+        ).all()
+
+    def create_report(self, report):
+
+        report["date"] = report["time"].strftime("%Y-%m-%d")
+
+        # convert datetime to cassandra.cqltypes.TimeUUIDType
+        self.session.execute(
+            self.CREATE_REPORT,
             (
-                user,
-                comment_id,
-                post,
-                content,
-                post,
-                comment_id,
-                user,
-                content,
+                report["sensor"],
+                report["date"],
+                report["time"],
+                report["temperature"],
+                report["humidity"],
+                report["air_quality"],
+                report["pressure"],
+                report["wind_speed"],
+                report["wind_direction"],
+                report["gust_speed"],
+                report["dew_point"],
+                report["cloud_cover"],
+                report["visibility"],
+                report["precipitation_intensity"],
+                report["precipitation_type"],
+                report["uv_index"],
+                report["solar_radiation"],
+                report["soil_temperature"],
+                report["soil_moisture"],
+                # report["location"],
+                # report["date"],
+                # report["time"],
+                # report["temperature"],
+                # report["humidity"],
+                # report["air_quality"],
+                # report["pressure"],
+                # report["wind_speed"],
+                # report["wind_direction"],
+                # report["gust_speed"],
+                # report["dew_point"],
+                # report["cloud_cover"],
+                # report["visibility"],
+                # report["precipitation_intensity"],
+                # report["precipitation_type"],
+                # report["uv_index"],
+                # report["solar_radiation"],
+                # report["soil_temperature"],
+                # report["soil_moisture"],
+                # report["environment"],
+                # report["date"],
+                # report["time"],
+                # report["temperature"],
+                # report["humidity"],
+                # report["air_quality"],
+                # report["pressure"],
+                # report["wind_speed"],
+                # report["wind_direction"],
+                # report["gust_speed"],
+                # report["dew_point"],
+                # report["cloud_cover"],
+                # report["visibility"],
+                # report["precipitation_intensity"],
+                # report["precipitation_type"],
+                # report["uv_index"],
+                # report["solar_radiation"],
+                # report["soil_temperature"],
+                # report["soil_moisture"],
             ),
         )
 
     def reset(self):
-        user_by_id_query = "DROP TABLE IF EXISTS user_by_id;"
-        post_by_id_query = "DROP TABLE IF EXISTS post_by_id;"
-        comment_by_id_query = "DROP TABLE IF EXISTS comment_by_id;"
-        post_by_user_id_query = "DROP TABLE IF EXISTS post_by_user_id;"
-        comment_by_user_id_query = "DROP TABLE IF EXISTS comment_by_user_id;"
-        comment_by_post_id_query = "DROP TABLE IF EXISTS comment_by_post_id;"
-        self.session.execute(user_by_id_query)
-        self.session.execute(post_by_id_query)
-        self.session.execute(comment_by_id_query)
-        self.session.execute(post_by_user_id_query)
-        self.session.execute(comment_by_user_id_query)
-        self.session.execute(comment_by_post_id_query)
+        self.session.execute("DROP TABLE IF EXISTS report_by_sensor;")
+        self.session.execute("DROP TABLE IF EXISTS report_by_location;")
+        self.session.execute("DROP TABLE IF EXISTS report_by_environment;")
+
+        data_fields = """
+            temperature DOUBLE,
+            humidity DOUBLE,
+            air_quality DOUBLE,
+            pressure DOUBLE,
+            wind_speed DOUBLE,
+            wind_direction TEXT,
+            gust_speed DOUBLE,
+            dew_point DOUBLE,
+            cloud_cover DOUBLE,
+            visibility DOUBLE,
+            precipitation_intensity DOUBLE,
+            precipitation_type TEXT,
+            uv_index DOUBLE,
+            solar_radiation DOUBLE,
+            soil_temperature DOUBLE,
+            soil_moisture DOUBLE
+        """
 
         # create table
-        user_by_id_query = """
-            CREATE TABLE IF NOT EXISTS user_by_id (
-                id UUID PRIMARY KEY,
-                username TEXT,
-                email TEXT,
-                password TEXT
-            )
-        """
-
-        post_by_id_query = """
-            CREATE TABLE IF NOT EXISTS post_by_id (
-                id UUID PRIMARY KEY,
-                user_id UUID,
-                title TEXT,
-                content TEXT
+        report_by_sensor_query = f"""
+            CREATE TABLE IF NOT EXISTS report_by_sensor(
+                sensor TEXT,
+                time TIMESTAMP,
+                date TEXT,
+                {data_fields},
+                PRIMARY KEY ((sensor, date))
             );
         """
 
-        comment_by_id_query = """
-            CREATE TABLE IF NOT EXISTS comment_by_id (
-                id UUID PRIMARY KEY,
-                user_id UUID,
-                post_id UUID,
-                content TEXT
+        report_by_location_query = f"""
+            CREATE TABLE IF NOT EXISTS report_by_location (
+                location TEXT,
+                time TIMESTAMP,
+                date TEXT,
+                {data_fields},
+                PRIMARY KEY ((location, date))
             );
         """
 
-        post_by_user_id_query = """
-            CREATE TABLE IF NOT EXISTS post_by_user_id (
-                user_id UUID,
-                id UUID,
-                title TEXT,
-                content TEXT,
-                PRIMARY KEY (user_id, id)
+        report_by_environment_query = f"""
+            CREATE TABLE IF NOT EXISTS report_by_environment (
+                environment TEXT,
+                time TIMESTAMP,
+                date TEXT,
+                {data_fields},
+                PRIMARY KEY ((environment, date))
             );
         """
 
-        comment_by_user_id_query = """
-            CREATE TABLE IF NOT EXISTS comment_by_user_id (
-                user_id UUID,
-                id UUID,
-                post_id UUID,
-                content TEXT,
-                PRIMARY KEY (user_id, id)
-            );
-        """
-
-        comment_by_post_id_query = """
-            CREATE TABLE IF NOT EXISTS comment_by_post_id (
-                post_id UUID,
-                id UUID,
-                user_id UUID,
-                content TEXT,
-                PRIMARY KEY (post_id, id)
-            );
-        """
-
-        self.session.execute(user_by_id_query)
-        self.session.execute(post_by_id_query)
-        self.session.execute(comment_by_id_query)
-        self.session.execute(post_by_user_id_query)
-        self.session.execute(comment_by_user_id_query)
-        self.session.execute(comment_by_post_id_query)
+        self.session.execute(report_by_sensor_query)
+        self.session.execute(report_by_location_query)
+        self.session.execute(report_by_environment_query)

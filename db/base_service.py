@@ -1,13 +1,51 @@
-from abc import abstractmethod
-from faker import Faker
-from random import shuffle
-from multiprocessing.pool import ThreadPool
+import random
+from datetime import datetime, timedelta
+
+SENSORS = [
+    "earth-363",
+    "earth-9001",
+    "earth-42",
+    "earth-1337",
+    "earth-2021",
+    "earth-2022",
+    "moon-4",
+    "moon-1",
+    "moon-90",
+    "moon-72",
+    "titan-1.2",
+    "titan-2.2",
+    "titan-3.2",
+    "mars-99",
+    "venus-1",
+    "venus-2",
+]
+
+LOCATIONS = [
+    "earth",
+    "moon",
+    "titan",
+    "mars",
+    "venus",
+]
+
+ENVIROMENTS = [
+    "valley",
+    "mountain",
+    "plains",
+    "abyss",
+    "cave",
+    "underground",
+    "ozonosphere",
+    "stratosphere",
+    "troposphere",
+    "mesosphere",
+    "thermosphere",
+    "exosphere",
+    "ionosphere",
+]
 
 
 class BaseService:
-
-    def __init__(self):
-        self.fake = Faker()
 
     def connect(self):
         pass
@@ -15,103 +53,104 @@ class BaseService:
     def disconnect(self):
         pass
 
-    def create_random_user(self, n):
-        for _ in range(n):
-            self.create_user(
-                self.fake.name(),
-                self.fake.email(),
-                self.fake.password(),
-            )
+    def create_reports(self, n):
+        timestamps = self._generate_random_increasing_timestamps(n)
 
-    def create_random_post(self, n):
-        user_ids = self.get_all_user_ids()
-        pool = ThreadPool(processes=1)
+        # generate random data
+        reports = [
+            {
+                "time": timestamps[i],
+                "sensor": random.choice(SENSORS),
+                "location": random.choice(LOCATIONS),
+                "environment": random.choice(ENVIROMENTS),
+                "temperature": random.uniform(-50, 50),
+                "humidity": random.uniform(0, 100),
+                "air_quality": random.uniform(0, 100),
+                "pressure": random.uniform(900, 1100),
+                "wind_speed": random.uniform(0, 100),
+                "wind_direction": random.choice(["N", "E", "S", "W"]),
+                "gust_speed": random.uniform(0, 100),
+                "dew_point": random.uniform(-50, 50),
+                "cloud_cover": random.uniform(0, 100),
+                "visibility": random.uniform(0, 100),
+                "precipitation_intensity": random.uniform(0, 100),
+                "precipitation_type": random.choice(["rain", "snow", "hail"]),
+                "uv_index": random.uniform(0, 100),
+                "solar_radiation": random.uniform(0, 1000),
+                "soil_temperature": random.uniform(-50, 50),
+                "soil_moisture": random.uniform(0, 100),
+            }
+            for i in range(n)
+        ]
 
-        def run(_):
-            self.create_post(
-                self.fake.random_element(user_ids),
-                self.fake.sentence(),
-                self.fake.text(),
-            )
+        def generate():
+            # insert data
+            for report in reports:
+                yield self.create_report(report)
 
-        pool.map(run, range(n), 1)
+        return generate()
 
-    def create_random_comment(self, n):
-        user_ids = self.get_all_user_ids()
-        post_ids = self.get_all_post_ids()
-        pool = ThreadPool(processes=1)
+    def _get_random_day(self, start, end):
+        day = start + timedelta(days=random.randint(0, (end - start).days))
+        return datetime(day.year, day.month, day.day)
 
-        def run(_):
-            self.create_comment(
-                self.fake.random_element(user_ids),
-                self.fake.random_element(post_ids),
-                self.fake.text(),
-            )
+    def _generate_random_increasing_timestamps(self, count):
+        timestamps = []
+        current = datetime.now()
 
-        pool.map(run, range(n), 1)
+        for _ in range(count):
+            current += timedelta(seconds=random.uniform(1, 60))  # 1 minute to 5 minutes
+            timestamps.append(current)
 
-    def get_posts_by_users(self):
-        user_ids = list(self.get_all_user_ids())
-        shuffle(user_ids)
+        return timestamps
 
-        def generator():
-            for user_id in user_ids:
-                yield self.get_post_by_user_id(user_id)
+    def get_reports_by_sensors(self, n):
+        start, end = self.get_time_range()
 
-        return generator()
+        def generate():
+            for i in range(n):
+                for sensor in SENSORS:
+                    random.seed(i)
+                    day = self._get_random_day(start, end)
+                    yield self.get_reports_by_sensor(sensor, day)
 
-    def get_comments_by_users(self):
-        user_ids = list(self.get_all_user_ids())
-        shuffle(user_ids)
+        return generate()
 
-        def generator():
-            for user_id in user_ids:
-                yield self.get_comments_by_user_id(user_id)
+    def get_reports_by_locations(self, n):
+        start, end = self.get_time_range()
 
-        return generator()
+        def generate():
+            for i in range(n):
+                for location in LOCATIONS:
+                    random.seed(i)
+                    day = self._get_random_day(start, end)
+                    yield self.get_reports_by_location(location, day)
 
-    def get_comments_by_posts(self):
-        post_ids = list(self.get_all_post_ids())
-        shuffle(post_ids)
+        return generate()
 
-        def generator():
-            for post_id in post_ids:
-                yield self.get_comments_by_post_id(post_id)
+    def get_reports_by_environments(self, n):
+        start, end = self.get_time_range()
 
-        return generator()
+        def generate():
+            for i in range(n):
+                for environment in ENVIROMENTS:
+                    random.seed(i)
+                    day = self._get_random_day(start, end)
+                    yield self.get_reports_by_environment(environment, day)
 
-    @abstractmethod
-    def get_post_by_user_id(self, user_id):
+        return generate()
+
+    def create_report(self, report):
         pass
 
-    @abstractmethod
-    def get_comments_by_user_id(self, user_id):
+    def get_reports_by_sensor(self, sensor, day):
         pass
 
-    @abstractmethod
-    def get_comments_by_post_id(self, post_id):
+    def get_reports_by_location(self, location, day):
         pass
 
-    @abstractmethod
-    def get_all_user_ids(self):
+    def get_reports_by_environment(self, environment, day):
         pass
 
-    @abstractmethod
-    def get_all_post_ids(self):
-        pass
-
-    @abstractmethod
-    def create_user(self, name, email, password):
-        pass
-
-    @abstractmethod
-    def create_post(self, user, title, content):
-        pass
-
-    @abstractmethod
-    def create_comment(self, user, post, content):
-        pass
-
-    @abstractmethod
-    def reset(self):
+    def get_time_range(self):
         pass
