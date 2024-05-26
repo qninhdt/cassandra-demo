@@ -1,4 +1,4 @@
-from db import MySQLService, MongoDBService, CassandraService
+from db import MongoDBService, CassandraService
 import streamlit as st
 from timeit import default_timer as timer
 
@@ -6,20 +6,15 @@ from timeit import default_timer as timer
 @st.cache_resource
 def get_service():
     services = [
-        # {
-        #     "name": "MySQL",
-        #     "service": MySQLService(),
-        #     "color": "blue",
-        # },
         {
             "name": "MongoDB",
             "service": MongoDBService(),
-            "color": "green",
+            "color": "#6ab04c",
         },
         {
             "name": "Cassandra",
             "service": CassandraService(),
-            "color": "red",
+            "color": "#7ed6df",
         },
     ]
 
@@ -45,10 +40,10 @@ services = get_service()
 # create random reports
 st.header("Create random reports")
 
-# number of users to create
+# number of reports to create
 n = st.number_input("Number of reports", 1, 100000, 10000)
 
-if st.button("Create users"):
+if st.button("Create reports"):
     for service in services:
         text = f"{service["name"]}"
         bar = st.progress(0, text=text)
@@ -62,13 +57,13 @@ if st.button("Create users"):
 
         delta = timer() - last
 
-        service["creating_users_time"] = delta
+        service["creating_reports_time"] = delta
     
-    st.write(f"Time to create {n} users (lower is better)")
+    st.write(f"Time to create {n} reports (lower is better)")
     st.bar_chart(
         x="DBMS", y="Time",
         color="color",
-        data=[{"DBMS": service["name"], "Time": service["creating_users_time"], "color": service["color"]} for service in services]
+        data=[{"DBMS": service["name"], "Time": service["creating_reports_time"], "color": service["color"]} for service in services]
     )
 
 st.header("Get reports by sensors")
@@ -87,7 +82,7 @@ if st.button("Get reports by sensors"):
 
         service["getting_reports_time"] = delta
 
-    st.write(f"Time to get all reports (lower is better)")
+    st.write(f"Time to get reports by sensor in a particular day (lower is better)")
     st.bar_chart(
         x="DBMS", y="Time",
         color="color",
@@ -112,7 +107,7 @@ if st.button("Get reports by locations"):
 
         service["getting_reports_time"] = delta
 
-    st.write(f"Time to get all reports (lower is better)")
+    st.write(f"Time to get reports by location in a particular day (lower is better)")
     st.bar_chart(
         x="DBMS", y="Time",
         color="color",
@@ -136,7 +131,7 @@ if st.button("Get reports by environments"):
 
         service["getting_reports_time"] = delta
 
-    st.write(f"Time to get all reports (lower is better)")
+    st.write(f"Time to get reports by environment in a particular day (lower is better)")
     st.bar_chart(
         x="DBMS", y="Time",
         color="color",
