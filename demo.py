@@ -1,4 +1,4 @@
-from db import MongoDBService, CassandraService
+from db import MongoDBService, CassandraService, MySQLService
 import streamlit as st
 from timeit import default_timer as timer
 
@@ -6,6 +6,11 @@ from timeit import default_timer as timer
 @st.cache_resource
 def get_service():
     services = [
+        {
+            "name": "MySQL",
+            "service": MySQLService(),
+            "color": "#4834d4",
+        },
         {
             "name": "MongoDB",
             "service": MongoDBService(),

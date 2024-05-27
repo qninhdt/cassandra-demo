@@ -19,6 +19,19 @@ services:
       CASSANDRA_CLUSTER_NAME: "cassandra-cluster-0"
     ports:
       - 9042:9042
+
+  mysql:
+    container_name: mysql
+    image: mysql:latest
+    restart: always
+    command: --init_file /data/mysql/init.sql
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+      - ./db/mysql/init.sql:/data/mysql/init.sql
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: nah_id_win
       
   app:
     build: .
@@ -27,4 +40,7 @@ services:
       - 5000:5000
     depends_on:
       - mongodb
+      - mysql
       - cassandra
+    environment:
+      MYSQL_ROOT_PASSWORD: nah_id_win
