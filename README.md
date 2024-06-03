@@ -1,4 +1,4 @@
-# Compare the performance of Cassandra and MongoDB
+# Compare the performance of Cassandra, MongoDB and MySQL
 
 ## Data schema
 
